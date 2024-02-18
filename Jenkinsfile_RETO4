@@ -1,0 +1,40 @@
+pipeline {
+    agent any
+    options {
+        // This is required if you want to clean before build
+        skipDefaultCheckout(true)
+    }
+    stages {
+        stage('Get Code') {
+            steps {
+                // Clean before build
+                cleanWs()
+                // Obtener código del repo de la rama develop
+                git branch: 'master', url: 'https://github.com/aezum19c/casopractico1c.git'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh '''
+                    sam build
+                    sam deploy --stack-name "todo-list-aws" --region "us-east-1" --resolve-s3 --no-fail-on-empty-changeset --on-failure DO_NOTHING
+                '''
+            }
+        }
+        stage('Rest Test') {
+            environment {
+                BASE_URL = """${sh(
+                        returnStdout: true,
+                        script: 'sam list endpoints --stack-name todo-list-aws --region us-east-1 --output json | jq -r \'.[] | select(.LogicalResourceId=="ServerlessRestApi").CloudEndpoint | .[0]\' | tr -d \'\n\t\''
+                    )}""" 
+            }
+            steps{
+                sh '''
+                    echo $BASE_URL
+                    chmod +x testRest.sh
+                    ./testRest.sh
+                '''
+            }
+        }
+    }
+}
